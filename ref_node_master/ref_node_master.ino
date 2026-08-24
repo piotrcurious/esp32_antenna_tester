@@ -15,7 +15,7 @@
  * Synchronization & Measurement Flow:
  *   1. Stay on CONTROL_CHANNEL (Ch 1)
  *   2. Perform clock sync with remote Test Master over ESP-NOW and local Slave over Serial1
- *   3. Send PREPARE to Test Master and local Slave (specifying target channel, phase, duration, MACs)
+ *   3. Send PREPARE to Test Master and local Slave (specifying target channel, phase, duration, target MAC)
  *   4. Wait for READY from Test Master and local Slave
  *   5. Send START_AT with calculated synchronized start timestamp
  *   6. Switch to TARGET_CHANNEL during guard period
@@ -598,7 +598,16 @@ static bool executePhase(uint8_t channel, Phase phase) {
     prepCmd.txIntervalUs = DEFAULT_TX_INTERVAL_US;
     prepCmd.bandwidth = 20;
     prepCmd.txRate = 0;
-    esp_wifi_get_mac(WIFI_IF_STA, prepCmd.targetMac);
+
+    // Determine target MAC for this phase
+    uint8_t ownMac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, ownMac);
+
+    if (phase == PHASE_REF_V_TX || phase == PHASE_REF_H_TX) {
+        memcpy(prepCmd.targetMac, TEST_MASTER_MAC, 6);
+    } else {
+        memcpy(prepCmd.targetMac, ownMac, 6);
+    }
 
     esp_now_send(TEST_MASTER_MAC, (const uint8_t*)&prepCmd, sizeof(prepCmd));
 
@@ -771,7 +780,7 @@ void loop() {
         runFullSweep();
     }
 
-    // Listen for manual trigger command "SWEEP" from PC over USB
+    // Listen for manual trigger command "SWEEP" or "START" from PC over USB
     if (Serial.available()) {
         int val = Serial.read();
         if (val == 'S' || val == 's') {
